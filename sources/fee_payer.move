@@ -33,7 +33,7 @@ module fee_payer::fee_payer {
         arrears: u64,
     }
 
-    // Struct to represent a fee payment
+    // Struct to represent a fee payment.
     struct FeePayment has key, store {
         id: UID,
         student_id: ID,
@@ -43,6 +43,7 @@ module fee_payer::fee_payer {
         paid_date: u64,
     }
 
+    // Struct to represent an invoice.
     struct Invoice has key, store {
         id: UID,
         student_id: ID,
@@ -51,7 +52,6 @@ module fee_payer::fee_payer {
         amount: u64,
         invoice_date: u64,
     }
-    
 
     // Error codes used in the fee payer system.
     const ENotSchool: u64 = 0;
@@ -59,7 +59,8 @@ module fee_payer::fee_payer {
     const EInsufficientBalance: u64 = 2;
 
     // Functions for managing the fee payer system.
-    // add school
+    
+    // Function to add a new school.
     public fun add_school(
         name: String,
         ctx: &mut TxContext
@@ -76,7 +77,7 @@ module fee_payer::fee_payer {
         }
     }
 
-    // add student
+    // Function to add a new student.
     public fun add_student(
         student: address,
         school: &mut School,
@@ -91,13 +92,13 @@ module fee_payer::fee_payer {
             balance: balance::zero<SUI>(),
         };
 
-        // add student to school
+        // Add student to school's student list.
         vector::push_back<address>(&mut school.students, student);
 
         new_student
     }
 
-    // invoice invoice_student
+    // Function to invoice a student.
     public fun invoice_student(
         school: &mut School,
         student: &mut Student,
@@ -106,9 +107,9 @@ module fee_payer::fee_payer {
         clock: &Clock,
         ctx: &mut TxContext
     ) {        
-        let payment_id = object::new(ctx);
+        let invoice_id = object::new(ctx);
         let invoice = Invoice {
-            id: payment_id,
+            id: invoice_id,
             student_id: object::id(student),
             school_id: student.school_id,
             amount,
@@ -116,23 +117,23 @@ module fee_payer::fee_payer {
             invoice_date: clock::timestamp_ms(clock),
         };
 
-        // increase student arrears
+        // Increase student arrears.
         student.arrears = student.arrears + amount;
 
-        // add payment to student
+        // Add invoice to school's invoice table.
         table::add<ID, Invoice>(&mut school.invoices, object::uid_to_inner(&invoice.id), invoice);
     }
     
-    // student deposit
+    // Function for student to deposit funds.
     public fun deposit(
         student: &mut Student,
         amount: Coin<SUI>,
     ) {
-        let coin = coin::into_balance(amount);
-        balance::join(&mut student.balance, coin);
+        let coin_balance = coin::into_balance(amount);
+        balance::join(&mut student.balance, coin_balance);
     }
 
-    // student pay fee
+    // Function for student to pay fee.
     public fun pay_fee(
         school: &mut School,
         student: &mut Student,
@@ -140,15 +141,14 @@ module fee_payer::fee_payer {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        // check if student has enough balance
-       assert!(balance::value(&student.balance) >= amount, EInsufficientFunds);
+        // Check if student has enough balance.
+        assert!(balance::value(&student.balance) >= amount, EInsufficientFunds);
 
-        // deduct amount from student balance
-       let fee_amount = coin::take(&mut student.balance, amount, ctx);
+        // Deduct amount from student's balance.
+        let fee_amount = coin::take(&mut student.balance, amount, ctx);
+        transfer::public_transfer(fee_amount, school.school);
 
-       transfer::public_transfer(fee_amount, school.school);
-
-        // create fee payment
+        // Create fee payment record.
         let payment_id = object::new(ctx);
         let payment = FeePayment {
             id: payment_id,
@@ -159,23 +159,22 @@ module fee_payer::fee_payer {
             paid_date: clock::timestamp_ms(clock),
         };
 
-        // add payment to student
+        // Add payment to school's payment table.
         table::add<ID, FeePayment>(&mut school.payments, object::uid_to_inner(&payment.id), payment);
 
-        // decrease student arrears
+        // Decrease student arrears.
         student.arrears = student.arrears - amount;
     }
 
-    // school withdraw
+    // Function for school to withdraw funds.
     public fun withdraw(
         school: &mut School,
         amount: u64,
         ctx: &mut TxContext
     ) {
-        assert!(tx_context::sender(ctx) == school.school, ENotSchool); // Add access control check
+        assert!(tx_context::sender(ctx) == school.school, ENotSchool); // Add access control check.
         assert!(balance::value(&school.balance) >= amount, EInsufficientBalance);
         let withdrawn = coin::take(&mut school.balance, amount, ctx);
         transfer::public_transfer(withdrawn, school.school);
     }
-    
 }
